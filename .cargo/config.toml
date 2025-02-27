@@ -1,0 +1,25 @@
+[target.'cfg(all(target_arch = "arm", target_os = "none"))']
+runner = [
+  "probe-rs",
+  "run",
+  "--chip",
+  "STM32U5A5ZJTxQ",
+  "--log-format",
+  "╭[ {L:bold}] {s}\r\n╰{{t} {c} => {fff}:{l}%dimmed}",
+]
+
+[env]
+DEFMT_LOG = "info"
+
+[build]
+rustflags = [
+    "-C", "link-arg=--nmagic",
+    "-C", "link-arg=-Tlink.x",
+    "-C", "link-arg=-Tdefmt.x",
+    # This is used for the cortex-m "linker-plugin-lto" feature
+    "-C", "linker-plugin-lto",
+    # Tell Rust we have a Cortex-M33
+    "-C", "target-cpu=cortex-m33",
+]
+target = "thumbv8m.main-none-eabihf"
+

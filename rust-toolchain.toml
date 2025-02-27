@@ -1,0 +1,4 @@
+[toolchain]
+channel = "nightly" # For embassy-executor
+components = ["rust-src"]
+targets = ["thumbv8m.main-none-eabihf"]

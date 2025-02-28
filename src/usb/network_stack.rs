@@ -1,15 +1,16 @@
 use core::str::FromStr;
 
 use embassy_futures::select::{select, Either};
-use embassy_net::{tcp::TcpSocket, DhcpConfig, Stack, StackResources};
+use embassy_net::{tcp::TcpSocket, DhcpConfig, Stack, StackResources, StaticConfigV4};
 use embassy_stm32::{peripherals::RNG, rng::Rng};
 use embassy_time::Timer;
 use embassy_usb::class::cdc_ncm::embassy_net::Device;
+use heapless::Vec;
 use static_cell::StaticCell;
 
 use crate::{
     logger::*,
-    usb::{HOSTNAME, MTU, SERVER_PORT},
+    usb::{GATEWAY, HOSTNAME, IP_ADDRESS, MTU, SERVER_PORT, USE_DHCP},
 };
 
 /// Initializes a network stack.
@@ -21,9 +22,19 @@ pub async fn init_network_stack(
     embassy_net::Runner<'static, Device<'static, MTU>>,
 ) {
     // Configure dhcp
-    let mut dhcp_config = DhcpConfig::default();
-    dhcp_config.hostname = Some(heapless::String::from_str(HOSTNAME).unwrap());
-    let dhcp_config = embassy_net::Config::dhcpv4(dhcp_config);
+    let network_config;
+    if USE_DHCP {
+        let mut dhcp_config = DhcpConfig::default();
+        dhcp_config.hostname = Some(heapless::String::from_str(HOSTNAME).unwrap());
+        network_config = embassy_net::Config::dhcpv4(dhcp_config);
+    } else {
+        let ip_config = StaticConfigV4 {
+            address: IP_ADDRESS,
+            gateway: GATEWAY,
+            dns_servers: Vec::new(),
+        };
+        network_config = embassy_net::Config::ipv4_static(ip_config);
+    }
 
     // Generate random seed
     let mut seed = [0u8; 8];
@@ -34,7 +45,7 @@ pub async fn init_network_stack(
     static RESOURCES: StaticCell<StackResources<3>> = StaticCell::new();
     let (stack, stack_runner) = embassy_net::new(
         eth_device,
-        dhcp_config,
+        network_config,
         RESOURCES.init(StackResources::new()),
         seed,
     );
@@ -62,6 +73,17 @@ pub async fn web_server_task(stack: Stack<'static>) {
         socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
         info!("HTTP | Listening on TCP:{}...", SERVER_PORT);
+
+        match stack.config_v4() {
+            None => {
+                defmt::warn!("HTTP | Stack has no IP");
+                continue;
+            }
+            Some(test) => {
+                defmt::info!("HTTP | Stack has IP {:?}", test.address);
+            }
+        };
+
         if let Err(e) = socket.accept(SERVER_PORT).await {
             warn!("Accept error: {:?}", e);
             continue;

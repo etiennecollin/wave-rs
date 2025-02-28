@@ -36,6 +36,6 @@ pub async fn init_ethernet(
 
 /// Runs a USB ethernet stack.
 #[embassy_executor::task]
-pub async fn usb_ethernet_task(class: Runner<'static, Driver<'static, USB_OTG_HS>, MTU>) -> ! {
-    class.run().await
+pub async fn usb_ethernet_task(runner: Runner<'static, Driver<'static, USB_OTG_HS>, MTU>) -> ! {
+    runner.run().await
 }

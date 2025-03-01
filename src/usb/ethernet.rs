@@ -1,12 +1,15 @@
 use embassy_stm32::{peripherals::USB_OTG_HS, usb::Driver};
-use embassy_usb::class::cdc_ncm::embassy_net::{Device, Runner};
 use embassy_usb::{
-    class::cdc_ncm::{self, CdcNcmClass},
+    class::cdc_ncm::{
+        self,
+        embassy_net::{Device, Runner},
+        CdcNcmClass,
+    },
     Builder,
 };
 use static_cell::StaticCell;
 
-use crate::usb::{HOST_MAC_ADDR, MTU, OUR_MAC_ADDR};
+use crate::usb::{ETH_MAX_PACKET_SIZE, HOST_MAC_ADDR, MTU, OUR_MAC_ADDR};
 
 /// Initializes an ethernet device.
 pub async fn init_ethernet(
@@ -21,7 +24,7 @@ pub async fn init_ethernet(
         builder,
         STATE_ETH.init(cdc_ncm::State::new()),
         HOST_MAC_ADDR,
-        64,
+        ETH_MAX_PACKET_SIZE,
     );
 
     // Create the network runner

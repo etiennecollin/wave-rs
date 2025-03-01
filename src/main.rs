@@ -3,20 +3,18 @@
 #![feature(impl_trait_in_assoc_type)]
 
 use embassy_executor::Spawner;
-use embassy_stm32::{
-    exti::ExtiInput,
-    gpio::{Level, Output, Pull, Speed},
-    rng::Rng,
-    Config,
-};
+use embassy_stm32::{exti::ExtiInput, gpio::Pull, rng::Rng, Config};
 use wave_rs::{
-    blinky::{blinky, button_listen},
+    keyboard::{mouse::mouse_writer_task, scan::keyboard_scan_task},
     usb::{
         ethernet::{init_ethernet, usb_ethernet_task},
-        network_stack::{init_network_stack, network_stack_task, web_server_task},
+        hid::{hid_keyboard_reader_task, init_hid_keyboard, init_hid_mouse},
         serial::{init_serial, usb_serial_task},
-        serial_logger::{init_serial_logger, usb_serial_logger_task},
         usb_device::{init_usb, usb_task},
+    },
+    web::{
+        network_stack::{init_network_stack, network_stack_task},
+        web_server::web_server_task,
     },
     Irqs,
 };
@@ -47,14 +45,23 @@ async fn main(spawner: Spawner) {
         });
         config.rcc.sys = Sysclk::PLL1_R;
         config.rcc.voltage_range = VoltageScale::RANGE1;
-        config.rcc.ahb_pre = AHBPrescaler::DIV2; // See Note
-
         config.rcc.mux.otghssel = mux::Otghssel::PLL1_P;
-        // config.rcc.mux.rngsel = mux::Rngsel::HSI48;
+
+        // Setup low speed clock
+        config.rcc.ls = LsConfig::default_lsi();
+        config.enable_debug_during_sleep = false;
+
+        // Setup RNG
+        config.rcc.ahb_pre = AHBPrescaler::DIV2; // See Note
+        config.rcc.mux.rngsel = mux::Rngsel::HSI48;
 
         // Note:
-        // 48.3.6 RNG Clocking
-        // When the CED bit in the RNG_CR register is set to 0 (error detection enabled), the RNG clock frequency before the internal divider must be higher than the AHB clock frequency divided by 32, otherwise the clock checker always flags a clock error (CECS = 1 in the RNG_SR register).
+        // Section 48.3.6: RNG Clocking
+        // When the CED bit in the RNG_CR register is set to 0 (error detection
+        // enabled), the RNG clock frequency before the internal divider must
+        // be higher than the AHB clock frequency divided by 32, otherwise the
+        // clock checker always flags a clock error (CECS = 1 in the RNG_SR
+        // register).
     }
     let p = embassy_stm32::init(config);
 
@@ -62,21 +69,6 @@ async fn main(spawner: Spawner) {
     // Configure important peripherals
     // =========================================================================
     let mut rng = Rng::new(p.RNG, Irqs);
-
-    // =========================================================================
-    // Blinky
-    // =========================================================================
-    defmt::info!("Starting blinky tasks...");
-    // Prepare peripherals for blinky
-    let leds: [Output; 3] = [
-        Output::new(p.PG2, Level::Low, Speed::Low), // red
-        Output::new(p.PB7, Level::Low, Speed::Low), // blue
-        Output::new(p.PC7, Level::Low, Speed::Low), // green
-    ];
-    let button = ExtiInput::new(p.PC13, p.EXTI13, Pull::Down);
-
-    spawner.spawn(button_listen(button)).unwrap();
-    spawner.spawn(blinky(leds)).unwrap();
 
     // =========================================================================
     // USB Builder
@@ -98,12 +90,18 @@ async fn main(spawner: Spawner) {
     // usb_dfu::<_, _, ResetImmediate>(&mut builder, &mut state, Duration::from_millis(2500));
 
     // =========================================================================
-    // USB Peripherals
+    // Initialize USB Peripherals
     // =========================================================================
     defmt::info!("Creating USB classes...");
+
+    // Serial
     let class_serial = init_serial(&mut builder).await;
-    #[cfg(feature = "log-serial")]
-    let class_serial_logger = init_serial_logger(&mut builder).await;
+
+    // HID
+    let (hid_keyboard_reader, hid_keyboard_writer) = init_hid_keyboard(&mut builder).await;
+    let hid_mouse_writer = init_hid_mouse(&mut builder).await;
+
+    // Network
     let (eth_runner, eth_device) = init_ethernet(&mut builder).await;
     let (stack, stack_runner) = init_network_stack(eth_device, &mut rng).await;
 
@@ -111,14 +109,27 @@ async fn main(spawner: Spawner) {
     defmt::info!("Building USB device...");
     let usb = builder.build();
 
+    // =========================================================================
+    // Spawn USB tasks
+    // =========================================================================
     // Spawn tasks
     defmt::info!("Spawning USB tasks...");
     spawner.spawn(usb_task(usb)).unwrap();
+
+    // Serial
     spawner.spawn(usb_serial_task(class_serial)).unwrap();
-    #[cfg(feature = "log-serial")]
+
+    // HID
+    let button = ExtiInput::new(p.PC13, p.EXTI13, Pull::Down);
     spawner
-        .spawn(usb_serial_logger_task(class_serial_logger))
+        .spawn(hid_keyboard_reader_task(hid_keyboard_reader))
         .unwrap();
+    spawner
+        .spawn(keyboard_scan_task(hid_keyboard_writer, button))
+        .unwrap();
+    // spawner.spawn(mouse_writer_task(hid_mouse_writer)).unwrap();
+
+    // Network stack
     spawner.spawn(usb_ethernet_task(eth_runner)).unwrap();
     spawner.spawn(network_stack_task(stack_runner)).unwrap();
     spawner.spawn(web_server_task(stack)).unwrap();

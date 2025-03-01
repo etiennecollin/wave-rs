@@ -1,3 +1,18 @@
+//! # Example: Blinky
+//! ```
+//! defmt::info!("Starting blinky tasks...");
+//! // Prepare peripherals for blinky
+//! let leds: [Output; 3] = [
+//!     Output::new(p.PG2, Level::Low, Speed::Low), // red
+//!     Output::new(p.PB7, Level::Low, Speed::Low), // blue
+//!     Output::new(p.PC7, Level::Low, Speed::Low), // green
+//! ];
+//! let button = ExtiInput::new(p.PC13, p.EXTI13, Pull::Down);
+//!
+//! spawner.spawn(button_listen(button)).unwrap();
+//! spawner.spawn(blinky(leds)).unwrap();
+//!```
+
 use core::cell::RefCell;
 
 use embassy_stm32::{exti::ExtiInput, gpio::Output};

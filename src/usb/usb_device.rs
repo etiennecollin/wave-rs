@@ -1,12 +1,19 @@
+use core::sync::atomic::{AtomicBool, Ordering};
+
+use defmt::info;
 use embassy_stm32::{
     peripherals::{self, USB_OTG_HS},
     usb::Driver,
 };
-use embassy_usb::{Builder, UsbDevice, UsbVersion};
+use embassy_usb::{Builder, Handler, UsbDevice, UsbVersion};
 use static_cell::StaticCell;
 
 use crate::{
-    usb::{USB_MANUFACTURER, USB_PID, USB_PRODUCT, USB_RELEASE_VERSION, USB_SN, USB_VID},
+    usb::{
+        USB_BOS_DESC_SIZE, USB_CONFIG_DESC_SIZE, USB_CONTROL_BUF_SIZE, USB_MANUFACTURER,
+        USB_MSOS_DESC_SIZE, USB_OUTPUT_BUFFER_SIZE, USB_PID, USB_PRODUCT, USB_RELEASE_VERSION,
+        USB_SN, USB_VID,
+    },
     Irqs,
 };
 
@@ -25,8 +32,8 @@ pub async fn init_usb(
     dm: peripherals::PA11,
 ) -> Builder<'static, Driver<'static, USB_OTG_HS>> {
     // Create a buffer for the output endpoint.
-    static OUTPUT_BUFFER: StaticCell<[u8; 512]> = StaticCell::new();
-    let ep_out_buffer = &mut OUTPUT_BUFFER.init([0; 512])[..];
+    static USB_OUTPUT_BUFFER: StaticCell<[u8; USB_OUTPUT_BUFFER_SIZE]> = StaticCell::new();
+    let ep_out_buffer = &mut USB_OUTPUT_BUFFER.init([0; USB_OUTPUT_BUFFER_SIZE])[..];
 
     // Create the driver, from the HAL.
     let mut hal_config = embassy_stm32::usb::Config::default();
@@ -55,17 +62,21 @@ pub async fn init_usb(
     // =========================================================================
 
     // Create embassy-usb DeviceBuilder using the driver and config.
-    static CONFIG_DESC: StaticCell<[u8; 256]> = StaticCell::new();
-    static BOS_DESC: StaticCell<[u8; 256]> = StaticCell::new();
-    static CONTROL_BUF: StaticCell<[u8; 128]> = StaticCell::new();
-    let builder = Builder::new(
+    static USB_CONFIG_DESC: StaticCell<[u8; USB_CONFIG_DESC_SIZE]> = StaticCell::new();
+    static USB_BOS_DESC: StaticCell<[u8; USB_BOS_DESC_SIZE]> = StaticCell::new();
+    static USB_MSOS_DESC: StaticCell<[u8; USB_MSOS_DESC_SIZE]> = StaticCell::new();
+    static USB_CONTROL_BUF: StaticCell<[u8; USB_CONTROL_BUF_SIZE]> = StaticCell::new();
+    let mut builder = Builder::new(
         driver,
         config,
-        &mut CONFIG_DESC.init([0; 256])[..],
-        &mut BOS_DESC.init([0; 256])[..],
-        &mut [], // no msos descriptors
-        &mut CONTROL_BUF.init([0; 128])[..],
+        USB_CONFIG_DESC.init([0; USB_CONFIG_DESC_SIZE]),
+        USB_BOS_DESC.init([0; USB_BOS_DESC_SIZE]),
+        USB_MSOS_DESC.init([0; USB_MSOS_DESC_SIZE]),
+        USB_CONTROL_BUF.init([0; USB_CONTROL_BUF_SIZE]),
     );
+
+    static USB_DEVICE_HANDLER: StaticCell<USBDeviceHandler> = StaticCell::new();
+    builder.handler(USB_DEVICE_HANDLER.init(USBDeviceHandler::new()));
 
     builder
 }
@@ -74,4 +85,48 @@ pub async fn init_usb(
 #[embassy_executor::task]
 pub async fn usb_task(mut device: UsbDevice<'static, Driver<'static, USB_OTG_HS>>) -> ! {
     device.run().await
+}
+
+struct USBDeviceHandler {
+    configured: AtomicBool,
+}
+
+impl USBDeviceHandler {
+    fn new() -> Self {
+        USBDeviceHandler {
+            configured: AtomicBool::new(false),
+        }
+    }
+}
+
+impl Handler for USBDeviceHandler {
+    fn enabled(&mut self, enabled: bool) {
+        self.configured.store(false, Ordering::Relaxed);
+        if enabled {
+            info!("Device enabled");
+        } else {
+            info!("Device disabled");
+        }
+    }
+
+    fn reset(&mut self) {
+        self.configured.store(false, Ordering::Relaxed);
+        info!("Bus reset, the Vbus current limit is 100mA");
+    }
+
+    fn addressed(&mut self, addr: u8) {
+        self.configured.store(false, Ordering::Relaxed);
+        info!("USB address set to: {}", addr);
+    }
+
+    fn configured(&mut self, configured: bool) {
+        self.configured.store(configured, Ordering::Relaxed);
+        if configured {
+            info!(
+                "Device configured, it may now draw up to the configured current limit from Vbus."
+            )
+        } else {
+            info!("Device is no longer configured, the Vbus current limit is 100mA.");
+        }
+    }
 }

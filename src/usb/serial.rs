@@ -1,4 +1,4 @@
-use defmt::panic;
+use defmt::{info, panic};
 use embassy_stm32::{
     peripherals::USB_OTG_HS,
     usb::{Driver, Instance},
@@ -9,8 +9,6 @@ use embassy_usb::{
     Builder,
 };
 use static_cell::StaticCell;
-
-use crate::logger::*;
 
 /// Initializes a serial class.
 pub async fn init_serial(
@@ -46,7 +44,7 @@ async fn echo<'d, T: Instance + 'd>(
     loop {
         let n = class.read_packet(&mut buf).await?;
         let data = &buf[..n];
-        log::info!("SERIAL | Data: {:?}", data);
+        info!("SERIAL | Data: {:?}", data);
         class.write_packet(data).await?;
     }
 }

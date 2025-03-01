@@ -1,9 +1,9 @@
 #![no_std]
 #![feature(impl_trait_in_assoc_type)]
 
-pub mod blinky;
-pub mod logger;
+pub mod keyboard;
 pub mod usb;
+pub mod web;
 
 use embassy_stm32::{
     bind_interrupts,

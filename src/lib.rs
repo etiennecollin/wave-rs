@@ -4,7 +4,6 @@
 pub mod config;
 pub mod keyboard;
 pub mod usb;
-pub mod utils;
 pub mod web;
 
 use embassy_stm32::{

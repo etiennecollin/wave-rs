@@ -3,16 +3,9 @@
 #![feature(impl_trait_in_assoc_type)]
 
 use embassy_executor::Spawner;
-use embassy_stm32::{
-    exti::ExtiInput,
-    gpio::Pull,
-    rng::Rng,
-    time::{self, Hertz},
-    timer::low_level::{self},
-    Config,
-};
+use embassy_stm32::{exti::ExtiInput, gpio::Pull, rng::Rng, Config};
 use wave_rs::{
-    keyboard::{mouse::mouse_writer_task, scan::keyboard_scan_task},
+    keyboard::{dma::configure_dma_scan, mouse::mouse_writer_task, scan::keyboard_scan_task},
     usb::{
         ethernet::{init_ethernet, usb_ethernet_task},
         hid::{hid_keyboard_reader_task, init_hid_keyboard, init_hid_mouse},
@@ -118,6 +111,16 @@ async fn main(spawner: Spawner) {
     let usb = builder.build();
 
     // =========================================================================
+    // Initialize GPDMA
+    // =========================================================================
+    let (mut write_ring_buffer, mut read_ring_buffer) =
+        configure_dma_scan(p.GPDMA1_CH0.into(), p.GPDMA1_CH1.into());
+
+    // Start the DMA
+    write_ring_buffer.start();
+    read_ring_buffer.start();
+
+    // =========================================================================
     // Spawn USB tasks
     // =========================================================================
     // Spawn tasks
@@ -128,17 +131,14 @@ async fn main(spawner: Spawner) {
     spawner.spawn(usb_serial_task(class_serial)).unwrap();
 
     // HID
-    let button = ExtiInput::new(p.PC13, p.EXTI13, Pull::Down);
     spawner
         .spawn(hid_keyboard_reader_task(hid_keyboard_reader))
         .unwrap();
     spawner
         .spawn(keyboard_scan_task(
             hid_keyboard_writer,
-            button,
-            p.TIM1,
-            p.GPDMA1_CH0.into(),
-            p.GPDMA1_CH1.into(),
+            write_ring_buffer,
+            read_ring_buffer,
         ))
         .unwrap();
     // spawner.spawn(mouse_writer_task(hid_mouse_writer)).unwrap();

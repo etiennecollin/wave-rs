@@ -2,8 +2,9 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 use defmt::info;
 use embassy_stm32::{
-    peripherals::{self, USB_OTG_HS},
-    usb::Driver,
+    peripherals::USB_OTG_HS,
+    usb::{DmPin, DpPin, Driver},
+    Peri,
 };
 use embassy_usb::{Builder, Handler, UsbDevice, UsbVersion};
 use static_cell::StaticCell;
@@ -23,13 +24,14 @@ use crate::{
 /// supports remote wakeup.
 ///
 /// # Arguments
+///
 /// - `usb`: The USB peripheral.
 /// - `dp`: The USB D+ pin.
 /// - `dm`: The USB D- pin.
 pub async fn init_usb(
-    usb: USB_OTG_HS,
-    dp: peripherals::PA12,
-    dm: peripherals::PA11,
+    usb: Peri<'static, USB_OTG_HS>,
+    dp: Peri<'static, impl DpPin<USB_OTG_HS>>,
+    dm: Peri<'static, impl DmPin<USB_OTG_HS>>,
 ) -> Builder<'static, Driver<'static, USB_OTG_HS>> {
     // Create a buffer for the output endpoint.
     static USB_OUTPUT_BUFFER: StaticCell<[u8; USB_OUTPUT_BUFFER_SIZE]> = StaticCell::new();

@@ -24,8 +24,8 @@ pub async fn abort_connection(socket: &mut TcpSocket<'_>) {
     let _ = flush_wrapper(socket, 500).await;
 }
 
-/// Flush the socket and return an error if it takes too long
-/// `max_time` is in milliseconds
+/// Flush the socket and return an error after `max_time` milliseconds if the
+/// socket is not flushed.
 pub async fn flush_wrapper(socket: &mut TcpSocket<'_>, max_time: u64) -> Result<(), ()> {
     match select(socket.flush(), Timer::after_millis(max_time)).await {
         Either::First(v) => {

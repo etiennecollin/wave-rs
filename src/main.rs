@@ -3,7 +3,14 @@
 #![feature(impl_trait_in_assoc_type)]
 
 use embassy_executor::Spawner;
-use embassy_stm32::{exti::ExtiInput, gpio::Pull, rng::Rng, Config};
+use embassy_stm32::{
+    exti::ExtiInput,
+    gpio::Pull,
+    rng::Rng,
+    time::{self, Hertz},
+    timer::low_level::{self},
+    Config,
+};
 use wave_rs::{
     keyboard::{mouse::mouse_writer_task, scan::keyboard_scan_task},
     usb::{
@@ -68,6 +75,7 @@ async fn main(spawner: Spawner) {
     // =========================================================================
     // Configure important peripherals
     // =========================================================================
+    // Configure the RNG
     let mut rng = Rng::new(p.RNG, Irqs);
 
     // =========================================================================
@@ -125,7 +133,13 @@ async fn main(spawner: Spawner) {
         .spawn(hid_keyboard_reader_task(hid_keyboard_reader))
         .unwrap();
     spawner
-        .spawn(keyboard_scan_task(hid_keyboard_writer, button))
+        .spawn(keyboard_scan_task(
+            hid_keyboard_writer,
+            button,
+            p.TIM1,
+            p.GPDMA1_CH0.into(),
+            p.GPDMA1_CH1.into(),
+        ))
         .unwrap();
     // spawner.spawn(mouse_writer_task(hid_mouse_writer)).unwrap();
 

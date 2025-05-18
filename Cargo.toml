@@ -37,9 +37,9 @@ embassy-net = { version = "0.6.0", features = ["tcp", "dhcpv4", "dhcpv4-hostname
 embassy-sync = { version = "0.6.2" }
 embassy-usb = { version = "0.4.0", features = ["max-interface-count-6", "max-handler-count-6"] }
 
-defmt = { version = "0.3.10" }
-defmt-rtt = { version = "0.4.1" }
-panic-probe = { version = "0.3.2" }
+defmt = { version = "1.0.1" }
+defmt-rtt = { version = "1.0.0" }
+panic-probe = { version = "1.0.0" }
 
 cortex-m = { version = "0.7.7", features = ["inline-asm", "critical-section-single-core", "linker-plugin-lto"] }
 cortex-m-rt = "0.7.5"

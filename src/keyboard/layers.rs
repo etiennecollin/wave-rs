@@ -15,7 +15,7 @@ pub struct Layer<const M: usize, const N: usize> {
 }
 
 impl<const M: usize, const N: usize> Layer<M, N> {
-    pub fn new(keys: [[Key; N]; M]) -> Self {
+    pub const fn new(keys: [[Key; N]; M]) -> Self {
         Self { keys }
     }
 }
@@ -47,7 +47,7 @@ pub struct Layers<const L: usize, const M: usize, const N: usize> {
 }
 
 impl<const L: usize, const M: usize, const N: usize> Layers<L, M, N> {
-    pub fn new(layers: [Layer<M, N>; L]) -> Self {
+    pub const fn new(layers: [Layer<M, N>; L]) -> Self {
         Self {
             layers,
             current_layer: 0,
@@ -110,6 +110,16 @@ impl<const L: usize, const M: usize, const N: usize> Layers<L, M, N> {
     pub fn set_current_layer(&mut self, layer: usize) {
         assert!(layer < L, "The current layer cannot b");
         self.current_layer = layer;
+    }
+
+    pub fn get_layer_from_key(&self, key: Key) -> Option<usize> {
+        if let Key::Layer(layer) = key {
+            // Check if the layer is in range
+            if layer < L {
+                return Some(layer);
+            }
+        }
+        None
     }
 }
 

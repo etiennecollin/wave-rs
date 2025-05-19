@@ -2,10 +2,22 @@
 #![no_main]
 #![feature(impl_trait_in_assoc_type)]
 
+use core::mem::forget;
+
 use embassy_executor::Spawner;
-use embassy_stm32::{exti::ExtiInput, gpio::Pull, rng::Rng, Config};
+use embassy_stm32::{
+    exti::ExtiInput,
+    gpio::{Input, Level, Output, Pull, Speed},
+    rng::Rng,
+    Config,
+};
 use wave_rs::{
-    keyboard::{dma::configure_dma_scan, mouse::mouse_writer_task, scan::keyboard_scan_task},
+    config::{scan::*, MATRIX_COLUMNS, MATRIX_ROWS},
+    keyboard::{
+        dma::{configure_dma_scan, DmaTimer},
+        mouse::mouse_writer_task,
+        scan::keyboard_scan_task,
+    },
     usb::{
         ethernet::{init_ethernet, usb_ethernet_task},
         hid::{hid_keyboard_reader_task, init_hid_keyboard, init_hid_mouse},
@@ -71,6 +83,26 @@ async fn main(spawner: Spawner) {
     // Configure the RNG
     let mut rng = Rng::new(p.RNG, Irqs);
 
+    // Configure GPIO pins
+    let res_cols = MATRIX_COLUMNS.init([
+        Output::new(p.PA0, Level::Low, Speed::High),
+        Output::new(p.PA1, Level::Low, Speed::High),
+        Output::new(p.PA2, Level::Low, Speed::High),
+        Output::new(p.PA3, Level::Low, Speed::High),
+        Output::new(p.PA4, Level::Low, Speed::High),
+    ]);
+
+    let res_rows = MATRIX_ROWS.init([
+        Input::new(p.PB0, Pull::Down),
+        Input::new(p.PB1, Pull::Down),
+        Input::new(p.PB2, Pull::Down),
+        Input::new(p.PB3, Pull::Down),
+    ]);
+
+    if res_cols.is_err() || res_rows.is_err() {
+        panic!("Failed to initialize GPIO matrix. This should not happen.");
+    }
+
     // =========================================================================
     // USB Builder
     // =========================================================================
@@ -113,12 +145,18 @@ async fn main(spawner: Spawner) {
     // =========================================================================
     // Initialize GPDMA
     // =========================================================================
-    let (mut write_ring_buffer, mut read_ring_buffer) =
-        configure_dma_scan(p.GPDMA1_CH0.into(), p.GPDMA1_CH1.into());
+    // Configure the timer for DMA
+    let mut timer = DmaTimer::new(p.TIM1);
+    timer.configure(FREQUENCY, CC_1, CC_2, CC_MAX);
+    timer.start();
 
-    // Start the DMA
-    write_ring_buffer.start();
-    read_ring_buffer.start();
+    // Leak the timer, so it doesn't get dropped
+    // If it does get dropped, the DMA will stop working as the timer will be
+    // uninitialized
+    forget(timer);
+
+    let (write_ring_buffer, read_ring_buffer) =
+        configure_dma_scan(p.GPDMA1_CH0.into(), p.GPDMA1_CH1.into());
 
     // =========================================================================
     // Spawn USB tasks

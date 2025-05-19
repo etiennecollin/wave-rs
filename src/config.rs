@@ -1,6 +1,7 @@
 use embassy_stm32::{
     gpio::{Input, Output},
     pac::{gpio::Gpio, GPIOA, GPIOB},
+    Peripherals,
 };
 use embassy_sync::once_lock::OnceLock;
 use usbd_human_interface_device::page::Keyboard;
@@ -14,8 +15,10 @@ use crate::keyboard::{
 pub mod scan {
     use embassy_stm32::time::Hertz;
 
-    /// The frequency at which the matrix is scanned.
-    pub const FREQUENCY: Hertz = Hertz(2);
+    /// The frequency at which the full matrix is scanned.
+    ///
+    /// The effective timer frequency is `FREQUENCY` * [`MATRIX_COLUMNS_NUMBER`](super::MATRIX_COLUMNS_NUMBER).
+    pub const FREQUENCY: Hertz = Hertz(4000);
     /// The maximum value for the counter compare register.
     pub const CC_MAX: u32 = 1000;
     /// The counter compare value at which the DMA set the column GPIO pins.

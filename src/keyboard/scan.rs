@@ -22,6 +22,7 @@ pub async fn keyboard_scan_task(
     mut read_ring_buffer: ReadableRingBuffer<'static, u32>,
 ) {
     // Start the DMA
+    info!("SCAN | Starting GPDMA...");
     write_ring_buffer.start();
     read_ring_buffer.start();
 

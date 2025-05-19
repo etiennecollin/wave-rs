@@ -6,50 +6,47 @@ use core::mem::forget;
 
 use embassy_executor::Spawner;
 use embassy_stm32::{
-    exti::ExtiInput,
     gpio::{Input, Level, Output, Pull, Speed},
-    rng::Rng,
     Config,
 };
 use wave_rs::{
     config::{scan::*, MATRIX_COLUMNS, MATRIX_ROWS},
     keyboard::{
         dma::{configure_dma_scan, DmaTimer},
-        mouse::mouse_writer_task,
         scan::keyboard_scan_task,
     },
     usb::{
-        ethernet::{init_ethernet, usb_ethernet_task},
-        hid::{hid_keyboard_reader_task, init_hid_keyboard, init_hid_mouse},
+        hid::{hid_keyboard_reader_task, init_hid_keyboard},
         serial::{init_serial, usb_serial_task},
         usb_device::{init_usb, usb_task},
     },
-    web::{
-        network_stack::{init_network_stack, network_stack_task},
-        web_server::web_server_task,
-    },
-    Irqs,
 };
 
 use {defmt_rtt as _, panic_probe as _};
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    // ========================================================================
-    // Initialization of STM32
+    defmt::info!(
+        "================================================================================"
+    );
+
     // =========================================================================
-    defmt::info!("Configuring STM32 clocks...");
+    // Configure STM32
+    // =========================================================================
+    defmt::info!("Configuring STM32...");
     let mut config = Config::default();
     {
         use embassy_stm32::rcc::*;
         use embassy_stm32::time::Hertz;
+
+        // Configure clock
         config.rcc.hse = Some(Hse {
             freq: Hertz(16_000_000),
             mode: HseMode::Oscillator,
         });
         config.rcc.pll1 = Some(Pll {
-            source: PllSource::HSE,
-            prediv: PllPreDiv::DIV2,   // HSE / 2 = 8MHz
+            source: PllSource::HSE,    // 16 MHz
+            prediv: PllPreDiv::DIV2,   // source / 2 = 8MHz
             mul: PllMul::MUL60,        // 8MHz * 60 = 480MHz
             divr: Some(PllDiv::DIV3),  // 480MHz / 3 = 160MHz (sys_ck)
             divq: Some(PllDiv::DIV10), // 480MHz / 10 = 48MHz (USB)
@@ -57,23 +54,28 @@ async fn main(spawner: Spawner) {
         });
         config.rcc.sys = Sysclk::PLL1_R;
         config.rcc.voltage_range = VoltageScale::RANGE1;
+        config.rcc.mux.iclksel = mux::Iclksel::PLL1_Q;
         config.rcc.mux.otghssel = mux::Otghssel::PLL1_P;
 
         // Setup low speed clock
         config.rcc.ls = LsConfig::default_lsi();
         config.enable_debug_during_sleep = false;
 
-        // Setup RNG
-        config.rcc.ahb_pre = AHBPrescaler::DIV2; // See Note
+        // Setup RNG,
+        config.rcc.ahb_pre = AHBPrescaler::DIV2; // See NOTE
         config.rcc.mux.rngsel = mux::Rngsel::HSI48;
 
-        // Note:
+        // NOTE:
+        // TLDR: This is required: rng_clk > ahb_clk / 32
+        // ---
         // Section 48.3.6: RNG Clocking
         // When the CED bit in the RNG_CR register is set to 0 (error detection
         // enabled), the RNG clock frequency before the internal divider must
         // be higher than the AHB clock frequency divided by 32, otherwise the
         // clock checker always flags a clock error (CECS = 1 in the RNG_SR
         // register).
+        // ---
+        // By default, the rng internal divider is set to 1.
     }
     let p = embassy_stm32::init(config);
 
@@ -81,9 +83,11 @@ async fn main(spawner: Spawner) {
     // Configure important peripherals
     // =========================================================================
     // Configure the RNG
-    let mut rng = Rng::new(p.RNG, Irqs);
+    // defmt::info!("Configuring RNG...");
+    // let mut rng = Rng::new(p.RNG, Irqs);
 
     // Configure GPIO pins
+    defmt::info!("Configuring GPIO...");
     let res_cols = MATRIX_COLUMNS.init([
         Output::new(p.PA0, Level::Low, Speed::High),
         Output::new(p.PA1, Level::Low, Speed::High),
@@ -100,7 +104,7 @@ async fn main(spawner: Spawner) {
     ]);
 
     if res_cols.is_err() || res_rows.is_err() {
-        panic!("Failed to initialize GPIO matrix. This should not happen.");
+        panic!("Failed to initialize GPIO matrix. This should never happen.");
     }
 
     // =========================================================================
@@ -112,6 +116,7 @@ async fn main(spawner: Spawner) {
     // =========================================================================
     // Setup DFU
     // =========================================================================
+    // defmt::info!("Configuring DFU...");
     // let flash = Flash::new_blocking(p.FLASH);
     // let flash = Mutex::new(RefCell::new(flash));
     //
@@ -132,11 +137,11 @@ async fn main(spawner: Spawner) {
 
     // HID
     let (hid_keyboard_reader, hid_keyboard_writer) = init_hid_keyboard(&mut builder).await;
-    let hid_mouse_writer = init_hid_mouse(&mut builder).await;
+    // let hid_mouse_writer = init_hid_mouse(&mut builder).await;
 
     // Network
-    let (eth_runner, eth_device) = init_ethernet(&mut builder).await;
-    let (stack, stack_runner) = init_network_stack(eth_device, &mut rng).await;
+    // let (eth_runner, eth_device) = init_ethernet(&mut builder).await;
+    // let (stack, stack_runner) = init_network_stack(eth_device, &mut rng).await;
 
     // Build the usb device
     defmt::info!("Building USB device...");
@@ -145,6 +150,7 @@ async fn main(spawner: Spawner) {
     // =========================================================================
     // Initialize GPDMA
     // =========================================================================
+    defmt::info!("Configuring GPDMA...");
     // Configure the timer for DMA
     let mut timer = DmaTimer::new(p.TIM1);
     timer.configure(FREQUENCY, CC_1, CC_2, CC_MAX);
@@ -159,16 +165,20 @@ async fn main(spawner: Spawner) {
         configure_dma_scan(p.GPDMA1_CH0.into(), p.GPDMA1_CH1.into());
 
     // =========================================================================
-    // Spawn USB tasks
-    // =========================================================================
     // Spawn tasks
-    defmt::info!("Spawning USB tasks...");
+    // =========================================================================
+    defmt::info!("Spawning tasks...");
+    defmt::info!(
+        "================================================================================"
+    );
+
+    // USB
     spawner.spawn(usb_task(usb)).unwrap();
 
     // Serial
     spawner.spawn(usb_serial_task(class_serial)).unwrap();
 
-    // HID
+    // HID keyboard
     spawner
         .spawn(hid_keyboard_reader_task(hid_keyboard_reader))
         .unwrap();
@@ -179,10 +189,12 @@ async fn main(spawner: Spawner) {
             read_ring_buffer,
         ))
         .unwrap();
+
+    // HID mouse
     // spawner.spawn(mouse_writer_task(hid_mouse_writer)).unwrap();
 
     // Network stack
-    spawner.spawn(usb_ethernet_task(eth_runner)).unwrap();
-    spawner.spawn(network_stack_task(stack_runner)).unwrap();
-    spawner.spawn(web_server_task(stack)).unwrap();
+    // spawner.spawn(usb_ethernet_task(eth_runner)).unwrap();
+    // spawner.spawn(network_stack_task(stack_runner)).unwrap();
+    // spawner.spawn(web_server_task(stack)).unwrap();
 }

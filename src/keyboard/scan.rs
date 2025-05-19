@@ -14,12 +14,14 @@ use crate::{
     usb::HID_KEYBOARD_WRITER_N,
 };
 
+use super::dma::{LinkedListWord, LINKED_LIST_LENGTH};
+
 /// Runs a HID writer task.
 #[embassy_executor::task]
 pub async fn keyboard_scan_task(
     mut _writer: HidWriter<'static, Driver<'static, USB_OTG_HS>, HID_KEYBOARD_WRITER_N>,
-    mut write_ring_buffer: WritableRingBuffer<'static, u32>,
-    mut read_ring_buffer: ReadableRingBuffer<'static, u32>,
+    mut write_ring_buffer: WritableRingBuffer<'static, LinkedListWord, LINKED_LIST_LENGTH>,
+    mut read_ring_buffer: ReadableRingBuffer<'static, LinkedListWord, LINKED_LIST_LENGTH>,
 ) {
     // Start the DMA
     info!("SCAN | Starting GPDMA...");

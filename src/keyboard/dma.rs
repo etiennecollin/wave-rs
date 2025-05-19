@@ -1,7 +1,7 @@
 use embassy_stm32::{
     dma::{
-        AnyChannel, Priority, ReadableRingBuffer, RegisterUpdaters, Request, TransferOptions,
-        WritableRingBuffer,
+        linked_list::LinearItem, AnyChannel, LinkedListTransfer, Priority, ReadableRingBuffer,
+        TransferOptions, WritableRingBuffer,
     },
     pac::{self, timer::vals::Ccds},
     time::Hertz,
@@ -13,21 +13,24 @@ use embassy_stm32::{
 };
 use static_cell::StaticCell;
 
-use crate::config::{
-    scan::FREQUENCY, MATRIX_COLUMNS_GPIO_PORT, MATRIX_COLUMNS_NUMBER, MATRIX_ROWS_GPIO_PORT,
-    MATRIX_ROWS_NUMBER,
-};
+use crate::config::{MATRIX_COLUMNS_GPIO_PORT, MATRIX_COLUMNS_NUMBER, MATRIX_ROWS_GPIO_PORT};
+
+/// Number of items in the GPDMA linked list.
+pub const LINKED_LIST_LENGTH: usize = 2;
+/// Size of the GPDMA linked list items.
+pub type LinkedListWord = u32;
 
 pub fn configure_dma_scan(
     dma_write_channel: Peri<'static, AnyChannel>,
     dma_read_channel: Peri<'static, AnyChannel>,
 ) -> (
-    WritableRingBuffer<'static, u32>,
-    ReadableRingBuffer<'static, u32>,
+    WritableRingBuffer<'static, LinkedListWord, LINKED_LIST_LENGTH>,
+    ReadableRingBuffer<'static, LinkedListWord, LINKED_LIST_LENGTH>,
 ) {
     // The write buffer is used to write to the GPIO registers
     // This is will enable each GPIO column pin one by one using a bit mask
-    static DMA_WRITE_BUFFER: StaticCell<[u32; MATRIX_COLUMNS_NUMBER * 2]> = StaticCell::new();
+    static DMA_WRITE_BUFFER: StaticCell<[LinkedListWord; MATRIX_COLUMNS_NUMBER * 2]> =
+        StaticCell::new();
     let mut write_bit_masks = [0; MATRIX_COLUMNS_NUMBER * 2];
 
     // Create a mask which will reset all column pins.
@@ -48,7 +51,8 @@ pub fn configure_dma_scan(
     // The read buffer is used to read from the GPIO registers.
     // We use double buffering to prevent race conditions between
     // the reading and writing of the GPIO registers.
-    static DMA_READ_BUFFER: StaticCell<[u32; MATRIX_COLUMNS_NUMBER * 2]> = StaticCell::new();
+    static DMA_READ_BUFFER: StaticCell<[LinkedListWord; MATRIX_COLUMNS_NUMBER * 2]> =
+        StaticCell::new();
     let read_buffer = DMA_READ_BUFFER.init([0; MATRIX_COLUMNS_NUMBER * 2]);
 
     // Set DMA options
@@ -57,49 +61,51 @@ pub fn configure_dma_scan(
     transfer_options.half_transfer_ir = false;
     transfer_options.complete_transfer_ir = true;
 
-    let write_updaters = RegisterUpdaters {
-        tr2: |w| {
-            w.set_swreq(pac::gpdma::vals::Swreq::HARDWARE);
-            // w.set_trigm(pac::gpdma::vals::Trigm::BLOCK);
-            // w.set_trigpol(pac::gpdma::vals::Trigpol::RISING_EDGE);
-            w.set_tcem(pac::gpdma::vals::Tcem::EACH_BLOCK);
-            // w.set_trigsel(0);
-        },
-        ..Default::default()
-    };
-
-    let read_updaters = RegisterUpdaters {
-        tr2: |w| {
-            w.set_swreq(pac::gpdma::vals::Swreq::HARDWARE);
-            // w.set_trigm(pac::gpdma::vals::Trigm::BLOCK);
-            // w.set_trigpol(pac::gpdma::vals::Trigpol::RISING_EDGE);
-            w.set_tcem(pac::gpdma::vals::Tcem::EACH_BLOCK);
-            // w.set_trigsel(0);
-        },
-        ..Default::default()
-    };
-
-    let write_ring_buffer = unsafe {
-        WritableRingBuffer::new(
-            dma_write_channel,
+    // Create the linked list transfer tables
+    let mut write_table = unsafe {
+        WritableRingBuffer::<_, LINKED_LIST_LENGTH>::simple_ring_buffer_table(
             42, // Trigger on tim1_cc1_dma (see STM32U5 reference manual p.688).
             MATRIX_COLUMNS_GPIO_PORT.bsrr().as_ptr() as _,
             write_buffer,
-            transfer_options,
-            write_updaters,
         )
     };
-
-    let read_ring_buffer = unsafe {
-        ReadableRingBuffer::new(
-            dma_read_channel,
+    let mut read_table = unsafe {
+        ReadableRingBuffer::<_, LINKED_LIST_LENGTH>::simple_ring_buffer_table(
             43, // Trigger on tim1_cc2_dma (see STM32U5 reference manual p.688).
             MATRIX_ROWS_GPIO_PORT.idr().as_ptr() as _,
             read_buffer,
-            transfer_options,
-            read_updaters,
         )
     };
+
+    // Override the default settings for the linked list transfer tables
+    write_table.items.iter_mut().for_each(|item| {
+        item.tr2.set_swreq(pac::gpdma::vals::Swreq::HARDWARE);
+        // item.tr2.set_trigm(pac::gpdma::vals::Trigm::BLOCK);
+        // item.tr2.set_trigpol(pac::gpdma::vals::Trigpol::RISING_EDGE);
+        item.tr2.set_tcem(pac::gpdma::vals::Tcem::EACH_BLOCK);
+        // item.tr2.set_trigsel(0);
+    });
+    read_table.items.iter_mut().for_each(|item| {
+        item.tr2.set_swreq(pac::gpdma::vals::Swreq::HARDWARE);
+        // item.tr2.set_trigm(pac::gpdma::vals::Trigm::BLOCK);
+        // item.tr2.set_trigpol(pac::gpdma::vals::Trigpol::RISING_EDGE);
+        item.tr2.set_tcem(pac::gpdma::vals::Tcem::EACH_BLOCK);
+        // item.tr2.set_trigsel(0);
+    });
+
+    // Create the GPDMA ring-buffers
+    let write_ring_buffer = WritableRingBuffer::new_with_table(
+        dma_write_channel,
+        write_buffer,
+        transfer_options,
+        write_table,
+    );
+    let read_ring_buffer = ReadableRingBuffer::new_with_table(
+        dma_read_channel,
+        read_buffer,
+        transfer_options,
+        read_table,
+    );
 
     (write_ring_buffer, read_ring_buffer)
 }

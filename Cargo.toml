@@ -57,7 +57,7 @@ cortex-m-rt = "0.7.5"
 heapless = "0.8.0"
 packed_struct = { version = "0.10.1", default-features = false }
 static_cell = "2.1.0"
-usbd-human-interface-device = "0.5.1"
+usbd-human-interface-device = "0.6.0"
 
 [profile.release]
 codegen-units = 1 # LLVM can perform better optimizations using a single thread

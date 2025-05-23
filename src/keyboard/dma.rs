@@ -28,7 +28,7 @@ pub fn configure_dma_scan(
     ReadableRingBuffer<'static, LinkedListWord, LINKED_LIST_LENGTH>,
 ) {
     // The write buffer is used to write to the GPIO registers
-    // This is will enable each GPIO column pin one by one using a bit mask
+    // This will enable each GPIO column pin one by one using a bit mask
     static DMA_WRITE_BUFFER: StaticCell<[LinkedListWord; MATRIX_COLUMNS_NUMBER * 2]> =
         StaticCell::new();
     let mut write_bit_masks = [0; MATRIX_COLUMNS_NUMBER * 2];

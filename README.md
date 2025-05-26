@@ -3,12 +3,11 @@
 ## TODO
 
 - Debouncer
-- Key layers
+- Key layers and report generation
 - Special functions
-  - Hold
-  - Double tap
-  - Macros
-- Matrix scanning
+  - Hold modifiers
+  - Double tap to repeat
+  - Combos
 - Layout parser
 - Web interface
   - Flash read-write for mappings?

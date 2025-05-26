@@ -1,6 +1,6 @@
 use core::ops::{Index, IndexMut};
 
-use crate::keyboard::keys::Key;
+use crate::keyboard::action::KeyAction;
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -11,11 +11,11 @@ pub enum LayersError {
 
 #[derive(Debug, Copy, Clone)]
 pub struct Layer<const M: usize, const N: usize> {
-    keys: [[Key; N]; M],
+    keys: [[KeyAction; N]; M],
 }
 
 impl<const M: usize, const N: usize> Layer<M, N> {
-    pub const fn new(keys: [[Key; N]; M]) -> Self {
+    pub const fn new(keys: [[KeyAction; N]; M]) -> Self {
         Self { keys }
     }
 }
@@ -23,13 +23,13 @@ impl<const M: usize, const N: usize> Layer<M, N> {
 impl<const M: usize, const N: usize> Default for Layer<M, N> {
     fn default() -> Self {
         Self {
-            keys: [[Key::Transparent; N]; M],
+            keys: [[KeyAction::Transparent; N]; M],
         }
     }
 }
 
 impl<const M: usize, const N: usize> Index<(usize, usize)> for Layer<M, N> {
-    type Output = Key;
+    type Output = KeyAction;
     fn index(&self, (row, col): (usize, usize)) -> &Self::Output {
         &self.keys[row][col]
     }
@@ -54,16 +54,16 @@ impl<const L: usize, const M: usize, const N: usize> Layers<L, M, N> {
         }
     }
 
-    pub fn get_key(&self, row: usize, col: usize) -> Key {
+    pub fn get_key(&self, row: usize, col: usize) -> KeyAction {
         self.get_key_from_layer(self.current_layer, row, col)
     }
 
-    fn get_key_from_layer(&self, layer: usize, row: usize, col: usize) -> Key {
+    fn get_key_from_layer(&self, layer: usize, row: usize, col: usize) -> KeyAction {
         match self.layers[layer][(row, col)] {
-            Key::Transparent => {
+            KeyAction::Transparent => {
                 if layer == 0 {
                     // If we are a the lowest layer, then there is no operation done
-                    Key::None
+                    KeyAction::NoOp
                 } else {
                     // Else, get the key in the next layer
                     self.get_key_from_layer(layer - 1, row, col)
@@ -73,7 +73,7 @@ impl<const L: usize, const M: usize, const N: usize> Layers<L, M, N> {
         }
     }
 
-    pub fn set_key_from_layer(&mut self, layer: usize, row: usize, col: usize, key: Key) {
+    pub fn set_key_from_layer(&mut self, layer: usize, row: usize, col: usize, key: KeyAction) {
         self.layers[layer][(row, col)] = key;
     }
 
@@ -112,8 +112,8 @@ impl<const L: usize, const M: usize, const N: usize> Layers<L, M, N> {
         self.current_layer = layer;
     }
 
-    pub fn get_layer_from_key(&self, key: Key) -> Option<usize> {
-        if let Key::Layer(layer) = key {
+    pub fn get_layer_from_key(&self, key: KeyAction) -> Option<usize> {
+        if let KeyAction::Layer(layer) = key {
             // Check if the layer is in range
             if layer < L {
                 return Some(layer);

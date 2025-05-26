@@ -1,13 +1,12 @@
 use embassy_stm32::{
     gpio::{Input, Output},
     pac::{gpio::Gpio, GPIOA, GPIOB},
-    Peripherals,
 };
 use embassy_sync::once_lock::OnceLock;
 use usbd_human_interface_device::page::Keyboard;
 
 use crate::keyboard::{
-    keys::Key,
+    action::{k, KeyAction::Single},
     layers::{Layer, Layers},
 };
 
@@ -39,12 +38,35 @@ pub const MATRIX_ROWS_GPIO_PORT: Gpio = GPIOB;
 pub static MATRIX_COLUMNS: OnceLock<[Output<'static>; MATRIX_COLUMNS_NUMBER]> = OnceLock::new();
 pub static MATRIX_ROWS: OnceLock<[Input<'static>; MATRIX_ROWS_NUMBER]> = OnceLock::new();
 
-#[rustfmt::skip]
 pub const LAYER_1: Layer<MATRIX_ROWS_NUMBER, MATRIX_COLUMNS_NUMBER> = Layer::new([
-    [Key::Base(Keyboard::A), Key::Base(Keyboard::B), Key::Base(Keyboard::C), Key::Base(Keyboard::D), Key::Base(Keyboard::E)],
-    [Key::Base(Keyboard::F), Key::Base(Keyboard::G), Key::Base(Keyboard::H), Key::Base(Keyboard::I), Key::Base(Keyboard::J)],
-    [Key::Base(Keyboard::K), Key::Base(Keyboard::L), Key::Base(Keyboard::M), Key::Base(Keyboard::N), Key::Base(Keyboard::O)],
-    [Key::Base(Keyboard::P), Key::Base(Keyboard::Q), Key::Base(Keyboard::R), Key::Base(Keyboard::S), Key::Base(Keyboard::T)],
+    [
+        Single(k(Keyboard::A)),
+        Single(k(Keyboard::B)),
+        Single(k(Keyboard::C)),
+        Single(k(Keyboard::D)),
+        Single(k(Keyboard::E)),
+    ],
+    [
+        Single(k(Keyboard::F)),
+        Single(k(Keyboard::G)),
+        Single(k(Keyboard::H)),
+        Single(k(Keyboard::I)),
+        Single(k(Keyboard::J)),
+    ],
+    [
+        Single(k(Keyboard::K)),
+        Single(k(Keyboard::L)),
+        Single(k(Keyboard::M)),
+        Single(k(Keyboard::N)),
+        Single(k(Keyboard::O)),
+    ],
+    [
+        Single(k(Keyboard::P)),
+        Single(k(Keyboard::Q)),
+        Single(k(Keyboard::R)),
+        Single(k(Keyboard::S)),
+        Single(k(Keyboard::T)),
+    ],
 ]);
 
 pub const LAYOUT: Layers<NUMBER_LAYERS, MATRIX_ROWS_NUMBER, MATRIX_COLUMNS_NUMBER> =

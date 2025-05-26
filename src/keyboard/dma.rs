@@ -63,14 +63,14 @@ pub fn configure_dma_scan(
 
     // Create the linked list transfer tables
     let mut write_table = unsafe {
-        WritableRingBuffer::<_, LINKED_LIST_LENGTH>::simple_ring_buffer_table(
+        WritableRingBuffer::<_, LINKED_LIST_LENGTH>::new_ping_pong_table(
             42, // Trigger on tim1_cc1_dma (see STM32U5 reference manual p.688).
             MATRIX_COLUMNS_GPIO_PORT.bsrr().as_ptr() as _,
             write_buffer,
         )
     };
     let mut read_table = unsafe {
-        ReadableRingBuffer::<_, LINKED_LIST_LENGTH>::simple_ring_buffer_table(
+        ReadableRingBuffer::<_, LINKED_LIST_LENGTH>::new_ping_pong_table(
             43, // Trigger on tim1_cc2_dma (see STM32U5 reference manual p.688).
             MATRIX_ROWS_GPIO_PORT.idr().as_ptr() as _,
             read_buffer,
